@@ -118,11 +118,16 @@ export function setWallpaper (sel: string): void {
 
 write('src/lib/wallpaperVideo.ts', '''// The optional video wallpaper: one muted <video> behind the launcher that plays the list in a random order. Plays only while
 // the launcher is on screen, and the launcher falls back to the still wallpaper if a video can't play.
+// Also pulls in a live list of extra clips from a local server (CUSTOM_PLAYLIST_URL), re-fetched every time the wallpaper
+// is turned on. Unreachable server -> empty extra list, no error, built-ins still play.
 
 import {WALLPAPER_VIDEOS} from '../config/wallpaperVideos';
 
 const HTML_CLASS = 'wp-video';
 const APPLE_HTTPS = /^https:\\/\\/sylvan\\.apple\\.com\\//;
+const CUSTOM_PLAYLIST_URL = 'http://192.168.178.108:8090/playlist.json';
+
+interface Clip { name: string; url: string }
 
 let video: HTMLVideoElement | null = null;
 let enabled = false;
@@ -130,9 +135,21 @@ let order: number[] = [];
 let position = 0;
 let useHttp = false;      // some TVs refuse Apple's certificate; the same file over http then plays
 let failures = 0;
+let custom: Clip[] = [];
+
+function allVideos (): Clip[] {
+	return (WALLPAPER_VIDEOS as Clip[]).concat(custom);
+}
+
+function refreshCustom (): void {
+	fetch(CUSTOM_PLAYLIST_URL, {cache: 'no-store'})
+		.then((r) => (r.ok ? r.json() : []))
+		.then((list) => { custom = Array.isArray(list) ? list : []; order = []; position = 0; })
+		.catch(() => { custom = []; });
+}
 
 function shuffle (): number[] {
-	const list = WALLPAPER_VIDEOS.map((_, i) => i);
+	const list = allVideos().map((_, i) => i);
 	for (let i = list.length - 1; i > 0; i--) {
 		const j = Math.floor(Math.random() * (i + 1));
 		const t = list[i]; list[i] = list[j]; list[j] = t;
@@ -141,9 +158,10 @@ function shuffle (): number[] {
 }
 
 function playCurrent (): void {
-	if (!video || !enabled || WALLPAPER_VIDEOS.length === 0) return;
+	const videos = allVideos();
+	if (!video || !enabled || videos.length === 0) return;
 	if (order.length === 0) order = shuffle();
-	const url = WALLPAPER_VIDEOS[order[position % order.length]].url;
+	const url = videos[order[position % order.length]].url;
 	video.src = useHttp ? url.replace(APPLE_HTTPS, 'http://sylvan.apple.com/') : url;
 	video.play().catch(() => { /* onerror moves on */ });
 }
@@ -186,11 +204,12 @@ function stop (): void {
 }
 
 export function setVideoWallpaper (on: boolean): void {
-	if (on === enabled) return;
+	if (on === enabled) { if (on) refreshCustom(); return; }
 	if (!on) { stop(); return; }
 	enabled = true;
 	failures = 0;
 	ensureVideo();
+	refreshCustom();
 	playCurrent();
 }
 ''')
