@@ -197,3 +197,27 @@ if (typeof window !== 'undefined') {
 	refreshCustomVideos();
 	window.setInterval(refreshCustomVideos, 3 * 60 * 1000);
 }
+
+// Wallpaper Engine clips are short, seamless loops (a few seconds), not full-length videos. Left alone, the player would
+// skip to the next one every time a clip reaches its natural end. This lets each clip loop for 5-10 minutes first,
+// so it feels like a real wallpaper instead of a slideshow. The current loop iteration always finishes before switching.
+const MIN_PLAY_MS_RANGE: [number, number] = [5 * 60 * 1000, 10 * 60 * 1000];
+let loopTimer: number | undefined;
+let watchedVideo: HTMLVideoElement | null = null;
+
+function watchVideoElement (): void {
+	const el = document.getElementById('bgvideo') as HTMLVideoElement | null;
+	if (!el || el === watchedVideo) return;
+	watchedVideo = el;
+	el.loop = true;
+	el.addEventListener('playing', () => {
+		el.loop = true;
+		if (loopTimer) window.clearTimeout(loopTimer);
+		const [min, max] = MIN_PLAY_MS_RANGE;
+		const duration = min + Math.random() * (max - min);
+		loopTimer = window.setTimeout(() => { el.loop = false; }, duration);
+	});
+}
+if (typeof window !== 'undefined') {
+	window.setInterval(watchVideoElement, 1000);
+}
