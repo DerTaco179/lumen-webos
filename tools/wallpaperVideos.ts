@@ -174,3 +174,27 @@ export const WALLPAPER_VIDEOS: WallpaperVideo[] = [
 	{name: "Yosemite", title: "Half Dome in Yosemite National Park, United States", url: "https://sylvan.apple.com/Videos/Y004_C015_SDR_2K_AVC.mov"},
 	{name: "Scotland", title: "Traveling along the coast of the Isle of Skye, Scotland", url: "https://sylvan.apple.com/Videos/S003_C020_SDR_2K_AVC.mov"},
 ];
+
+
+// Live playlist from the home NAS: whatever .mp4 files are in that folder, polled every few minutes and folded in
+// (removed entries drop out again too). Unreachable NAS -> nothing changes, the list above still plays on its own.
+const CUSTOM_PLAYLIST_URL = 'http://192.168.178.108:8090/playlist.json';
+let customUrls: string[] = [];
+function refreshCustomVideos (): void {
+	fetch(CUSTOM_PLAYLIST_URL, {cache: 'no-store'})
+		.then((r) => (r.ok ? r.json() : []))
+		.then((list: WallpaperVideo[]) => {
+			if (!Array.isArray(list)) return;
+			for (const url of customUrls) {
+				const i = WALLPAPER_VIDEOS.findIndex((v) => v.url === url);
+				if (i >= 0) WALLPAPER_VIDEOS.splice(i, 1);
+			}
+			WALLPAPER_VIDEOS.push(...list);
+			customUrls = list.map((v) => v.url);
+		})
+		.catch(() => {});
+}
+if (typeof window !== 'undefined') {
+	refreshCustomVideos();
+	window.setInterval(refreshCustomVideos, 10 * 60 * 1000);
+}
