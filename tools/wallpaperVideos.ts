@@ -1,6 +1,6 @@
 export interface WallpaperVideo { name: string; title?: string; url: string }
 // Mixkit's free stock videos of European places (mixkit.co licence: free use, no attribution needed) and Apple's tvOS aerial screensaver videos (1080p H.264, ~6 Mbps), each from its own server. Streamed, not bundled.
-export const WALLPAPER_VIDEOS: WallpaperVideo[] = [
+const DEFAULT_VIDEOS: WallpaperVideo[] = [
 	{name: "Switzerland", title: "View of the Switzerland alps covered in snow", url: "https://assets.mixkit.co/videos/31939/31939-720.mp4"},
 	{name: "Switzerland", title: "Fog on the heights of the snowy mountains", url: "https://assets.mixkit.co/videos/4396/4396-1080.mp4"},
 	{name: "Switzerland", title: "Swiss Alps snow background time-lapse", url: "https://assets.mixkit.co/videos/4283/4283-1080.mp4"},
@@ -175,26 +175,25 @@ export const WALLPAPER_VIDEOS: WallpaperVideo[] = [
 	{name: "Scotland", title: "Traveling along the coast of the Isle of Skye, Scotland", url: "https://sylvan.apple.com/Videos/S003_C020_SDR_2K_AVC.mov"},
 ];
 
+export const WALLPAPER_VIDEOS: WallpaperVideo[] = [...DEFAULT_VIDEOS];
 
-// Live playlist from the home NAS: whatever .mp4 files are in that folder, polled every few minutes and folded in
-// (removed entries drop out again too). Unreachable NAS -> nothing changes, the list above still plays on its own.
+// Live playlist from the home NAS: when it's reachable, its videos ARE the rotation (that's the point of this feature).
+// Unreachable or empty -> falls back to the stock Mixkit/Apple list above, so the wallpaper is never blank.
 const CUSTOM_PLAYLIST_URL = 'http://192.168.178.108:8090/playlist.json';
-let customUrls: string[] = [];
 function refreshCustomVideos (): void {
 	fetch(CUSTOM_PLAYLIST_URL, {cache: 'no-store'})
 		.then((r) => (r.ok ? r.json() : []))
 		.then((list: WallpaperVideo[]) => {
-			if (!Array.isArray(list)) return;
-			for (const url of customUrls) {
-				const i = WALLPAPER_VIDEOS.findIndex((v) => v.url === url);
-				if (i >= 0) WALLPAPER_VIDEOS.splice(i, 1);
-			}
-			WALLPAPER_VIDEOS.push(...list);
-			customUrls = list.map((v) => v.url);
+			const next = Array.isArray(list) && list.length > 0 ? list : DEFAULT_VIDEOS;
+			WALLPAPER_VIDEOS.length = 0;
+			WALLPAPER_VIDEOS.push(...next);
 		})
-		.catch(() => {});
+		.catch(() => {
+			WALLPAPER_VIDEOS.length = 0;
+			WALLPAPER_VIDEOS.push(...DEFAULT_VIDEOS);
+		});
 }
 if (typeof window !== 'undefined') {
 	refreshCustomVideos();
-	window.setInterval(refreshCustomVideos, 10 * 60 * 1000);
+	window.setInterval(refreshCustomVideos, 3 * 60 * 1000);
 }
