@@ -178,8 +178,10 @@ const DEFAULT_VIDEOS: WallpaperVideo[] = [
 export const WALLPAPER_VIDEOS: WallpaperVideo[] = [...DEFAULT_VIDEOS];
 
 // Live playlist from the home NAS: when it's reachable, its videos ARE the rotation (that's the point of this feature).
-// Unreachable or empty -> falls back to the stock Mixkit/Apple list above, so the wallpaper is never blank.
+// Unreachable or empty -> falls back to the stock Mixkit/Apple list above, so the wallpaper is never blank. Polled often so a
+// NAS that just came back online (or just went offline) is picked up quickly.
 const CUSTOM_PLAYLIST_URL = 'http://192.168.178.108:8090/playlist.json';
+let customUrls: string[] = [];
 function refreshCustomVideos (): void {
 	fetch(CUSTOM_PLAYLIST_URL, {cache: 'no-store'})
 		.then((r) => (r.ok ? r.json() : []))
@@ -187,20 +189,24 @@ function refreshCustomVideos (): void {
 			const next = Array.isArray(list) && list.length > 0 ? list : DEFAULT_VIDEOS;
 			WALLPAPER_VIDEOS.length = 0;
 			WALLPAPER_VIDEOS.push(...next);
+			customUrls = Array.isArray(list) ? list.map((v) => v.url) : [];
 		})
 		.catch(() => {
 			WALLPAPER_VIDEOS.length = 0;
 			WALLPAPER_VIDEOS.push(...DEFAULT_VIDEOS);
+			customUrls = [];
 		});
 }
 if (typeof window !== 'undefined') {
 	refreshCustomVideos();
-	window.setInterval(refreshCustomVideos, 3 * 60 * 1000);
+	window.setInterval(refreshCustomVideos, 30 * 1000);
 }
 
-// Wallpaper Engine clips are short, seamless loops (a few seconds), not full-length videos. Left alone, the player would
-// skip to the next one every time a clip reaches its natural end. This lets each clip loop for 5-10 minutes first,
-// so it feels like a real wallpaper instead of a slideshow. The current loop iteration always finishes before switching.
+// Wallpaper Engine clips (our own NAS videos) are short, seamless loops, so they're kept playing (looping) for 5-10 minutes
+// before the player is allowed to move to the next one, so it feels like a real wallpaper instead of a slideshow. The stock
+// Mixkit/Apple fallback clips are already full-length videos and switch at their own natural pace instead - that's also what
+// lets the wallpaper pick NAS clips back up quickly once the NAS is back, instead of being stuck on a stock clip for minutes.
+// The current loop iteration always finishes before switching.
 const MIN_PLAY_MS_RANGE: [number, number] = [5 * 60 * 1000, 10 * 60 * 1000];
 let loopTimer: number | undefined;
 let watchedVideo: HTMLVideoElement | null = null;
@@ -209,10 +215,11 @@ function watchVideoElement (): void {
 	const el = document.getElementById('bgvideo') as HTMLVideoElement | null;
 	if (!el || el === watchedVideo) return;
 	watchedVideo = el;
-	el.loop = true;
 	el.addEventListener('playing', () => {
+		if (loopTimer) { window.clearTimeout(loopTimer); loopTimer = undefined; }
+		const isCustom = customUrls.indexOf(el.src) !== -1;
+		if (!isCustom) { el.loop = false; return; }
 		el.loop = true;
-		if (loopTimer) window.clearTimeout(loopTimer);
 		const [min, max] = MIN_PLAY_MS_RANGE;
 		const duration = min + Math.random() * (max - min);
 		loopTimer = window.setTimeout(() => { el.loop = false; }, duration);
